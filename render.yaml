@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: ocr-crm
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: ocr_crm
+      - key: AMO_SECRET_KEY
+        sync: false
+      - key: AMO_REDIRECT_URI
+        sync: false
+      - key: INTEGRATION_ID
+        sync: false
+      - key: AMO_LONG_TOKEN
+        sync: false
+      - key: AMO_SHORT_KEY
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        fromService:
+          type: web
+          name: ocr-crm
+          property: port
+
