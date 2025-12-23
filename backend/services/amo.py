@@ -1,4 +1,5 @@
 import httpx
+import asyncio
 from typing import Optional, List, Dict, Any
 from backend.config import get_settings
 from backend.database.mongodb import get_students_collection
@@ -237,9 +238,90 @@ class AMOCRMService:
             return response.status_code == 200
 
 
+async def _send_single_student_to_amo(
+    amo_service: AMOCRMService,
+    students_collection,
+    student: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Отправка одной заявки в AMO CRM
+    Возвращает результат: {"success": True/False, "data": {...}, "error": "..."}
+    """
+    try:
+        # Создаем контакт
+        contact_id = await amo_service.create_contact(
+            fio=student.get("fio", ""),
+            phone=student.get("phone", "")
+        )
+        
+        if not contact_id:
+            return {
+                "success": False,
+                "id": str(student["_id"]),
+                "fio": student.get("fio", ""),
+                "error": "Failed to create contact"
+            }
+        
+        # Создаем сделку
+        lead_id = await amo_service.create_lead(
+            name=student.get("fio", ""),
+            contact_id=contact_id,
+            application_type=student.get("application_type", ""),
+            school=student.get("school", ""),
+            student_class=student.get("class", "")
+        )
+        
+        if not lead_id:
+            return {
+                "success": False,
+                "id": str(student["_id"]),
+                "fio": student.get("fio", ""),
+                "error": "Failed to create lead"
+            }
+        
+        # Добавляем примечание с информацией
+        app_type = student.get("application_type", "")
+        note_text = f"""Тип заявки: {app_type if app_type else "-"}
+Школа: {student.get("school", "-")}
+Класс: {student.get("class", "-")}
+Телефон: {student.get("phone", "-")}
+Дата заявки: {student.get("created_at", "-")}"""
+        
+        await amo_service.add_note_to_lead(lead_id, note_text)
+        
+        # Обновляем статус в БД
+        await students_collection.update_one(
+            {"_id": student["_id"]},
+            {
+                "$set": {
+                    "sent_to_amo": True,
+                    "amo_contact_id": str(contact_id),
+                    "amo_lead_id": str(lead_id)
+                }
+            }
+        )
+        
+        return {
+            "success": True,
+            "id": str(student["_id"]),
+            "fio": student.get("fio", ""),
+            "amo_contact_id": contact_id,
+            "amo_lead_id": lead_id
+        }
+        
+    except Exception as e:
+        print(f"Error sending student {student['_id']} to AMO: {e}")
+        return {
+            "success": False,
+            "id": str(student["_id"]),
+            "fio": student.get("fio", ""),
+            "error": str(e)
+        }
+
+
 async def send_students_to_amo(student_ids: List[str] = None) -> Dict[str, Any]:
     """
-    Отправка заявок учеников в AMO CRM
+    Отправка заявок учеников в AMO CRM с параллельной обработкой
     
     Args:
         student_ids: Список ID студентов для отправки. 
@@ -264,75 +346,48 @@ async def send_students_to_amo(student_ids: List[str] = None) -> Dict[str, Any]:
         "total": len(students)
     }
     
-    for student in students:
-        try:
-            # Создаем контакт
-            contact_id = await amo_service.create_contact(
-                fio=student.get("fio", ""),
-                phone=student.get("phone", "")
-            )
-            
-            if not contact_id:
+    if not students:
+        return results
+    
+    # Обрабатываем заявки батчами для соблюдения лимитов AMO API
+    # AMO обычно позволяет ~7-10 запросов в секунду, используем батчи по 5
+    BATCH_SIZE = 5
+    
+    # Создаем задачи для всех студентов
+    tasks = [
+        _send_single_student_to_amo(amo_service, students_collection, student)
+        for student in students
+    ]
+    
+    # Обрабатываем батчами
+    for i in range(0, len(tasks), BATCH_SIZE):
+        batch = tasks[i:i + BATCH_SIZE]
+        batch_results = await asyncio.gather(*batch, return_exceptions=True)
+        
+        for result in batch_results:
+            if isinstance(result, Exception):
                 results["failed"].append({
-                    "id": str(student["_id"]),
-                    "fio": student.get("fio", ""),
-                    "error": "Failed to create contact"
+                    "id": "unknown",
+                    "fio": "unknown",
+                    "error": str(result)
                 })
-                continue
-            
-            # Создаем сделку
-            lead_id = await amo_service.create_lead(
-                name=student.get("fio", ""),
-                contact_id=contact_id,
-                application_type=student.get("application_type", ""),
-                school=student.get("school", ""),
-                student_class=student.get("class", "")
-            )
-            
-            if not lead_id:
+            elif result.get("success"):
+                results["success"].append({
+                    "id": result["id"],
+                    "fio": result["fio"],
+                    "amo_contact_id": result.get("amo_contact_id"),
+                    "amo_lead_id": result.get("amo_lead_id")
+                })
+            else:
                 results["failed"].append({
-                    "id": str(student["_id"]),
-                    "fio": student.get("fio", ""),
-                    "error": "Failed to create lead"
+                    "id": result.get("id", "unknown"),
+                    "fio": result.get("fio", "unknown"),
+                    "error": result.get("error", "Unknown error")
                 })
-                continue
-            
-            # Добавляем примечание с информацией
-            app_type = student.get("application_type", "")
-            note_text = f"""Тип заявки: {app_type if app_type else "-"}
-Школа: {student.get("school", "-")}
-Класс: {student.get("class", "-")}
-Телефон: {student.get("phone", "-")}
-Дата заявки: {student.get("created_at", "-")}"""
-            
-            await amo_service.add_note_to_lead(lead_id, note_text)
-            
-            # Обновляем статус в БД
-            await students_collection.update_one(
-                {"_id": student["_id"]},
-                {
-                    "$set": {
-                        "sent_to_amo": True,
-                        "amo_contact_id": str(contact_id),
-                        "amo_lead_id": str(lead_id)
-                    }
-                }
-            )
-            
-            results["success"].append({
-                "id": str(student["_id"]),
-                "fio": student.get("fio", ""),
-                "amo_contact_id": contact_id,
-                "amo_lead_id": lead_id
-            })
-            
-        except Exception as e:
-            print(f"Error sending student {student['_id']} to AMO: {e}")
-            results["failed"].append({
-                "id": str(student["_id"]),
-                "fio": student.get("fio", ""),
-                "error": str(e)
-            })
+        
+        # Небольшая задержка между батчами для соблюдения rate limit
+        if i + BATCH_SIZE < len(tasks):
+            await asyncio.sleep(0.5)
     
     return results
 
