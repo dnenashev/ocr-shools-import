@@ -26,6 +26,10 @@ class StudentBase(BaseModel):
     student_class: str = Field(..., alias="class", description="Класс")
     phone: str = Field(..., description="Номер телефона")
     application_type: str = Field(..., description="Тип заявки")
+    # Поля обратной связи (вторая страница анкеты)
+    masterclass_rating: Optional[int] = Field(None, description="Оценка мастер-класса (1-10)")
+    speaker_rating: Optional[int] = Field(None, description="Оценка спикера (1-10)")
+    feedback: Optional[str] = Field(None, description="Свободная форма обратной связи")
 
 
 class StudentCreate(StudentBase):
@@ -34,13 +38,12 @@ class StudentCreate(StudentBase):
 
 class StudentInDB(StudentBase):
     id: str = Field(default=None, alias="_id")
-    image_path: Optional[str] = None
+    image_paths: Optional[list[str]] = Field(default=None, description="Пути к изображениям (может быть несколько)")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     sent_to_amo: bool = False
     amo_contact_id: Optional[str] = None
     amo_lead_id: Optional[str] = None
     ocr_raw: Optional[dict] = None
-    application_type: str = Field(default="", description="Тип заявки")
 
     class Config:
         populate_by_name = True
@@ -54,12 +57,15 @@ class StudentResponse(BaseModel):
     school: str
     student_class: str = Field(..., alias="class")
     phone: str
-    image_path: Optional[str] = None
+    image_paths: Optional[list[str]] = None
     created_at: datetime
     sent_to_amo: bool
     amo_contact_id: Optional[str] = None
     amo_lead_id: Optional[str] = None
     application_type: str = ""
+    masterclass_rating: Optional[int] = None
+    speaker_rating: Optional[int] = None
+    feedback: Optional[str] = None
 
     class Config:
         populate_by_name = True
@@ -70,6 +76,17 @@ class OCRResult(BaseModel):
     school: str = ""
     student_class: str = Field(default="", alias="class")
     phone: str = ""
+    raw_response: Optional[dict] = None
+
+    class Config:
+        populate_by_name = True
+
+
+class FeedbackOCRResult(BaseModel):
+    """Результат OCR для второй страницы (обратная связь)"""
+    masterclass_rating: Optional[int] = None  # Оценка мастер-класса (1-10)
+    speaker_rating: Optional[int] = None  # Оценка спикера (1-10)
+    feedback: str = ""  # Свободная форма обратной связи
     raw_response: Optional[dict] = None
 
     class Config:

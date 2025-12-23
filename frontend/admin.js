@@ -208,10 +208,30 @@ function renderStudents(students) {
         return;
     }
     
-    studentsTable.innerHTML = students.map(student => `
+    studentsTable.innerHTML = students.map(student => {
+        // Формируем строку с оценками и отзывом
+        let feedbackInfo = '';
+        if (student.masterclass_rating || student.speaker_rating || student.feedback) {
+            feedbackInfo = '<div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">';
+            if (student.masterclass_rating) {
+                feedbackInfo += `⭐ МК: ${student.masterclass_rating}/10 `;
+            }
+            if (student.speaker_rating) {
+                feedbackInfo += `👤 Спикер: ${student.speaker_rating}/10`;
+            }
+            if (student.feedback) {
+                const shortFeedback = student.feedback.length > 50 
+                    ? student.feedback.substring(0, 50) + '...' 
+                    : student.feedback;
+                feedbackInfo += `<br>💬 ${escapeHtml(shortFeedback)}`;
+            }
+            feedbackInfo += '</div>';
+        }
+        
+        return `
         <tr>
             <td><span style="font-size: 12px; color: var(--accent-primary);">${escapeHtml(student.application_type || '-')}</span></td>
-            <td><strong>${escapeHtml(student.fio || '-')}</strong></td>
+            <td><strong>${escapeHtml(student.fio || '-')}</strong>${feedbackInfo}</td>
             <td>${escapeHtml(student.school || '-')}</td>
             <td>${escapeHtml(student.class || '-')}</td>
             <td>${escapeHtml(student.phone || '-')}</td>
@@ -238,7 +258,8 @@ function renderStudents(students) {
                 </div>
             </td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function updatePagination() {

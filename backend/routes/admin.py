@@ -96,7 +96,13 @@ async def get_students(
     # Преобразуем ObjectId в строки
     result = []
     for student in students:
+        student["id"] = str(student["_id"])
         student["_id"] = str(student["_id"])
+        
+        # Обратная совместимость: если есть image_path, но нет image_paths, создаём массив
+        if "image_path" in student and "image_paths" not in student:
+            student["image_paths"] = [student["image_path"]] if student.get("image_path") else []
+        
         # Удаляем сырые данные OCR из ответа (они большие)
         student.pop("ocr_raw", None)
         result.append(student)
