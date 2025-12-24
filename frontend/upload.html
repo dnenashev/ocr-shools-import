@@ -610,6 +610,16 @@
                         <input type="tel" id="editPhone" placeholder="+7 (999) 123-45-67" required>
                     </div>
                     
+                    <div class="form-group">
+                        <label for="editParentName">Имя родителя (опционально)</label>
+                        <input type="text" id="editParentName" placeholder="Фамилия Имя Отчество родителя">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="editParentPhone">Телефон родителя (опционально)</label>
+                        <input type="tel" id="editParentPhone" placeholder="+7 (999) 123-45-67">
+                    </div>
+                    
                     <div class="form-actions">
                         <button class="btn btn-outline" onclick="cancelEdit()">
                             Отмена
@@ -1028,6 +1038,8 @@
             document.getElementById('editSchool').value = data.school || '';
             document.getElementById('editClass').value = data.class || '';
             document.getElementById('editPhone').value = data.phone || '';
+            document.getElementById('editParentName').value = data.parent_name || '';
+            document.getElementById('editParentPhone').value = data.parent_phone || '';
             
             // Скрываем превью и кнопку загрузки, показываем форму
             previewContainer.classList.remove('active');
@@ -1178,6 +1190,10 @@
                 // Объединяем все пути к изображениям
                 const allImagePaths = [...currentImagePaths, ...feedbackImagePaths];
                 
+                // Получаем данные родителя
+                const parentName = document.getElementById('editParentName').value.trim();
+                const parentPhone = document.getElementById('editParentPhone').value.trim();
+                
                 const formData = new FormData();
                 formData.append('fio', fio);
                 formData.append('school', school);
@@ -1185,6 +1201,13 @@
                 formData.append('phone', phone);
                 formData.append('application_type', selectedApplicationType);
                 formData.append('image_paths', JSON.stringify(allImagePaths));
+                
+                if (parentName) {
+                    formData.append('parent_name', parentName);
+                }
+                if (parentPhone) {
+                    formData.append('parent_phone', parentPhone);
+                }
                 
                 if (currentOcrRaw) {
                     formData.append('ocr_raw', JSON.stringify(currentOcrRaw));
@@ -1265,6 +1288,8 @@
             document.getElementById('editSchool').value = '';
             document.getElementById('editClass').value = '';
             document.getElementById('editPhone').value = '';
+            document.getElementById('editParentName').value = '';
+            document.getElementById('editParentPhone').value = '';
             document.getElementById('editMasterclassRating').value = '';
             document.getElementById('editSpeakerRating').value = '';
             document.getElementById('editFeedback').value = '';

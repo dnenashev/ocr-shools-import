@@ -34,16 +34,21 @@ async def process_image_ocr(image_data: bytes, filename: str) -> OCRResult:
 - Школа (название школы)
 - Класс (номер и буква класса, например "5А" или "11Б")
 - Номер телефона
+- Имя родителя (опционально, может быть не указано)
+- Телефон родителя (опционально, может быть не указано)
 
 Верни данные ТОЛЬКО в формате JSON без дополнительного текста:
 {
     "fio": "Фамилия Имя Отчество",
     "school": "Название школы",
     "class": "Класс",
-    "phone": "Номер телефона"
+    "phone": "Номер телефона",
+    "parent_name": "Имя родителя или null",
+    "parent_phone": "Телефон родителя или null"
 }
 
-Если какое-то поле не удалось распознать, оставь пустую строку.
+Если какое-то обязательное поле (fio, school, class, phone) не удалось распознать, оставь пустую строку.
+Если опциональные поля (parent_name, parent_phone) не найдены в анкете, верни null для них.
 Если это не изображение с данными ученика, верни пустые значения для всех полей."""
 
     headers = {
@@ -103,11 +108,23 @@ async def process_image_ocr(image_data: bytes, filename: str) -> OCRResult:
             
             parsed_data = json.loads(json_str)
             
+            # Обрабатываем опциональные поля родителя
+            parent_name = parsed_data.get("parent_name")
+            parent_phone = parsed_data.get("parent_phone")
+            
+            # Преобразуем пустые строки в None для опциональных полей
+            if parent_name == "" or parent_name is None:
+                parent_name = None
+            if parent_phone == "" or parent_phone is None:
+                parent_phone = None
+            
             return OCRResult(
                 fio=parsed_data.get("fio", ""),
                 school=parsed_data.get("school", ""),
                 student_class=parsed_data.get("class", ""),
                 phone=parsed_data.get("phone", ""),
+                parent_name=parent_name,
+                parent_phone=parent_phone,
                 raw_response=result
             )
             

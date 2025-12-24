@@ -26,6 +26,9 @@ class StudentBase(BaseModel):
     student_class: str = Field(..., alias="class", description="Класс")
     phone: str = Field(..., description="Номер телефона")
     application_type: str = Field(..., description="Тип заявки")
+    # Опциональные поля для мастер-класса по кибербезопасности
+    parent_name: Optional[str] = Field(None, description="Имя родителя")
+    parent_phone: Optional[str] = Field(None, description="Телефон родителя")
     # Поля обратной связи (вторая страница анкеты)
     masterclass_rating: Optional[int] = Field(None, description="Оценка мастер-класса (1-10)")
     speaker_rating: Optional[int] = Field(None, description="Оценка спикера (1-10)")
@@ -63,6 +66,8 @@ class StudentResponse(BaseModel):
     amo_contact_id: Optional[str] = None
     amo_lead_id: Optional[str] = None
     application_type: str = ""
+    parent_name: Optional[str] = None
+    parent_phone: Optional[str] = None
     masterclass_rating: Optional[int] = None
     speaker_rating: Optional[int] = None
     feedback: Optional[str] = None
@@ -76,6 +81,8 @@ class OCRResult(BaseModel):
     school: str = ""
     student_class: str = Field(default="", alias="class")
     phone: str = ""
+    parent_name: Optional[str] = None
+    parent_phone: Optional[str] = None
     raw_response: Optional[dict] = None
 
     class Config:

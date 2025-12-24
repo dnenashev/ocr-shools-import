@@ -163,6 +163,8 @@ async def save_student_data(
     application_type: str = Form(...),
     image_paths: str = Form(...),  # JSON массив путей к изображениям
     ocr_raw: Optional[str] = Form(None),
+    parent_name: Optional[str] = Form(None),
+    parent_phone: Optional[str] = Form(None),
     masterclass_rating: Optional[int] = Form(None),
     speaker_rating: Optional[int] = Form(None),
     feedback: Optional[str] = Form(None)
@@ -208,6 +210,14 @@ async def save_student_data(
         except (ValueError, TypeError):
             speaker_rating = None
     
+    # Обрабатываем опциональные поля родителя
+    parent_name_clean = parent_name.strip() if parent_name else None
+    parent_phone_clean = parent_phone.strip() if parent_phone else None
+    if parent_name_clean == "":
+        parent_name_clean = None
+    if parent_phone_clean == "":
+        parent_phone_clean = None
+    
     # Подготавливаем данные для сохранения
     student_data = {
         "fio": fio,
@@ -215,6 +225,8 @@ async def save_student_data(
         "class": student_class,
         "phone": phone,
         "application_type": application_type,
+        "parent_name": parent_name_clean,
+        "parent_phone": parent_phone_clean,
         "image_paths": image_paths_list,
         "masterclass_rating": masterclass_rating,
         "speaker_rating": speaker_rating,
