@@ -73,7 +73,9 @@ async def upload_photo(
                 "fio": ocr_result.fio,
                 "school": ocr_result.school,
                 "class": ocr_result.student_class,
-                "phone": ocr_result.phone
+                "phone": ocr_result.phone,
+                "parent_name": ocr_result.parent_name,
+                "parent_phone": ocr_result.parent_phone
             },
             "ocr_raw": ocr_result.raw_response
         }
