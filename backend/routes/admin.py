@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException, status, Depends, Response, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Optional, List
 from datetime import timedelta
 from bson import ObjectId
+import csv
+import io
 from backend.database.mongodb import get_students_collection
 from backend.services.amo import send_students_to_amo
 from backend.utils.auth import authenticate_admin, get_current_admin, ACCESS_TOKEN_EXPIRE_MINUTES
@@ -255,4 +257,109 @@ async def get_stats(_: bool = Depends(get_current_admin)):
         "sent_to_amo": sent,
         "not_sent": not_sent
     }
+
+
+@router.get("/export-csv")
+async def export_to_csv(
+    sent_to_amo: Optional[bool] = None,
+    search: Optional[str] = None,
+    _: bool = Depends(get_current_admin)
+):
+    """
+    Экспорт всех заявок в CSV файл.
+    
+    Query params:
+    - sent_to_amo: Фильтр по статусу отправки в AMO
+    - search: Поиск по ФИО
+    """
+    students_collection = await get_students_collection()
+    
+    # Формируем фильтр (аналогично get_students)
+    query = {}
+    if sent_to_amo is not None:
+        query["sent_to_amo"] = sent_to_amo
+    if search:
+        query["fio"] = {"$regex": search, "$options": "i"}
+    
+    # Получаем все записи (без пагинации для экспорта)
+    cursor = students_collection.find(query).sort("created_at", -1)
+    students = await cursor.to_list(length=None)
+    
+    # Создаем CSV в памяти
+    output = io.StringIO()
+    
+    # Заголовки CSV
+    fieldnames = [
+        "Тип заявки",
+        "ФИО",
+        "Школа",
+        "Класс",
+        "Телефон",
+        "Имя родителя",
+        "Телефон родителя",
+        "Дата создания",
+        "Отправлено в AMO",
+        "ID контакта AMO",
+        "ID сделки AMO",
+        "Оценка мастер-класса",
+        "Оценка спикера",
+        "Отзыв"
+    ]
+    
+    writer = csv.DictWriter(output, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
+    writer.writeheader()
+    
+    # Записываем данные
+    for student in students:
+        # Форматируем дату
+        created_at = student.get("created_at")
+        if created_at:
+            if isinstance(created_at, str):
+                date_str = created_at
+            else:
+                date_str = created_at.strftime("%d.%m.%Y %H:%M")
+        else:
+            date_str = ""
+        
+        # Форматируем статус отправки
+        sent_status = "Да" if student.get("sent_to_amo", False) else "Нет"
+        
+        writer.writerow({
+            "Тип заявки": student.get("application_type", ""),
+            "ФИО": student.get("fio", ""),
+            "Школа": student.get("school", ""),
+            "Класс": student.get("class", ""),
+            "Телефон": student.get("phone", ""),
+            "Имя родителя": student.get("parent_name", "") or "",
+            "Телефон родителя": student.get("parent_phone", "") or "",
+            "Дата создания": date_str,
+            "Отправлено в AMO": sent_status,
+            "ID контакта AMO": student.get("amo_contact_id", "") or "",
+            "ID сделки AMO": student.get("amo_lead_id", "") or "",
+            "Оценка мастер-класса": student.get("masterclass_rating", "") or "",
+            "Оценка спикера": student.get("speaker_rating", "") or "",
+            "Отзыв": student.get("feedback", "") or ""
+        })
+    
+    # Подготавливаем ответ с правильной кодировкой для Excel (UTF-8 с BOM)
+    output.seek(0)
+    csv_content = output.getvalue()
+    
+    # Добавляем BOM для корректного отображения в Excel
+    csv_bytes = '\ufeff'.encode('utf-8') + csv_content.encode('utf-8')
+    
+    # Создаем поток для ответа
+    csv_stream = io.BytesIO(csv_bytes)
+    
+    # Генерируем имя файла с датой
+    from datetime import datetime
+    filename = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    
+    return StreamingResponse(
+        iter([csv_stream.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
 

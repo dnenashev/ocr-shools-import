@@ -356,6 +356,71 @@ async function sendAllToAmo() {
     }
 }
 
+// Export to CSV
+async function exportToCSV() {
+    try {
+        showToast('Подготовка экспорта...', 'info');
+        
+        // Получаем текущие фильтры
+        const filterValue = filterSelect.value;
+        const searchValue = searchInput.value.trim();
+        
+        // Формируем URL с параметрами фильтрации
+        let url = '/api/admin/export-csv';
+        const params = [];
+        
+        if (filterValue !== '') {
+            params.push(`sent_to_amo=${filterValue}`);
+        }
+        if (searchValue) {
+            params.push(`search=${encodeURIComponent(searchValue)}`);
+        }
+        
+        if (params.length > 0) {
+            url += '?' + params.join('&');
+        }
+        
+        // Загружаем CSV файл
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            // Получаем blob и создаем ссылку для скачивания
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            
+            // Получаем имя файла из заголовка Content-Disposition
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = 'export.csv';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+            
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(downloadUrl);
+            
+            showToast('CSV файл успешно выгружен', 'success');
+        } else {
+            const data = await response.json();
+            showToast(data.detail || 'Ошибка экспорта', 'error');
+        }
+    } catch (error) {
+        console.error('Export error:', error);
+        showToast('Ошибка подключения', 'error');
+    }
+}
+
 // Delete functions
 function confirmDelete(studentId) {
     deleteStudentId = studentId;
