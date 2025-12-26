@@ -421,6 +421,50 @@ async function exportToCSV() {
     }
 }
 
+// Verify AMO status
+async function verifyAmoStatus() {
+    try {
+        showToast('Проверка заявок в AMO...', 'info');
+        
+        const response = await fetch('/api/admin/verify-amo', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            const checked = data.results?.checked || 0;
+            const updated = data.results?.updated || 0;
+            const notFound = data.results?.not_found?.length || 0;
+            
+            if (updated > 0) {
+                showToast(
+                    `Проверено ${checked} заявок. Не найдено в AMO: ${updated}. Статусы обновлены.`,
+                    'warning'
+                );
+            } else {
+                showToast(
+                    `Проверено ${checked} заявок. Все заявки найдены в AMO.`,
+                    'success'
+                );
+            }
+            
+            // Обновляем статистику и список
+            loadStats();
+            loadStudents();
+        } else {
+            showToast(data.detail || 'Ошибка проверки', 'error');
+        }
+    } catch (error) {
+        console.error('Verify AMO error:', error);
+        showToast('Ошибка подключения', 'error');
+    }
+}
+
 // Delete functions
 function confirmDelete(studentId) {
     deleteStudentId = studentId;

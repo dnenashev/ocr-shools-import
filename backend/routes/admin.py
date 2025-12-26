@@ -6,7 +6,7 @@ from bson import ObjectId
 import csv
 import io
 from backend.database.mongodb import get_students_collection
-from backend.services.amo import send_students_to_amo
+from backend.services.amo import send_students_to_amo, verify_sent_to_amo
 from backend.utils.auth import authenticate_admin, get_current_admin, ACCESS_TOKEN_EXPIRE_MINUTES
 from pydantic import BaseModel
 
@@ -257,6 +257,27 @@ async def get_stats(_: bool = Depends(get_current_admin)):
         "sent_to_amo": sent,
         "not_sent": not_sent
     }
+
+
+@router.post("/verify-amo")
+async def verify_amo_status(_: bool = Depends(get_current_admin)):
+    """
+    Проверка всех заявок, помеченных как отправленные в AMO CRM.
+    Если сделка не найдена в AMO, обновляет статус на неотправленную.
+    """
+    try:
+        results = await verify_sent_to_amo()
+        
+        return {
+            "success": True,
+            "message": f"Проверено {results['checked']} заявок. Не найдено в AMO: {results['updated']}",
+            "results": results
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка проверки AMO: {str(e)}"
+        )
 
 
 @router.get("/export-csv")

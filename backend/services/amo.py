@@ -236,6 +236,40 @@ class AMOCRMService:
             )
             
             return response.status_code == 200
+    
+    async def check_lead_exists(self, lead_id: int) -> bool:
+        """
+        Проверка существования сделки в AMO CRM по ID
+        Возвращает True если сделка существует, False если нет
+        """
+        url = f"{self.base_url}/api/v4/leads/{lead_id}"
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(
+                    url,
+                    headers=self._get_headers()
+                )
+                
+                if response.status_code == 200:
+                    return True
+                elif response.status_code == 404:
+                    return False
+                elif response.status_code == 401:
+                    # Попробуем обновить токен и повторить
+                    if await self.refresh_access_token():
+                        response = await client.get(
+                            url,
+                            headers=self._get_headers()
+                        )
+                        return response.status_code == 200
+                    return False
+                else:
+                    print(f"Error checking lead {lead_id}: {response.status_code} - {response.text}")
+                    return False
+            except Exception as e:
+                print(f"Exception checking lead {lead_id}: {e}")
+                return False
 
 
 async def _send_single_student_to_amo(
@@ -387,6 +421,94 @@ async def send_students_to_amo(student_ids: List[str] = None) -> Dict[str, Any]:
         
         # Небольшая задержка между батчами для соблюдения rate limit
         if i + BATCH_SIZE < len(tasks):
+            await asyncio.sleep(0.5)
+    
+    return results
+
+
+async def verify_sent_to_amo() -> Dict[str, Any]:
+    """
+    Проверка всех заявок, помеченных как отправленные в AMO CRM.
+    Если сделка не найдена в AMO, обновляет статус на неотправленную.
+    
+    Returns:
+        Словарь с результатами: проверено, не найдено, обновлено
+    """
+    amo_service = AMOCRMService()
+    students_collection = await get_students_collection()
+    
+    # Получаем все заявки, помеченные как отправленные
+    query = {"sent_to_amo": True, "amo_lead_id": {"$exists": True, "$ne": None}}
+    students = await students_collection.find(query).to_list(length=None)
+    
+    results = {
+        "checked": 0,
+        "not_found": [],
+        "updated": 0,
+        "errors": []
+    }
+    
+    if not students:
+        return results
+    
+    # Обрабатываем батчами для соблюдения rate limit
+    BATCH_SIZE = 5
+    
+    for i in range(0, len(students), BATCH_SIZE):
+        batch = students[i:i + BATCH_SIZE]
+        
+        # Проверяем каждую заявку в батче
+        for student in batch:
+            try:
+                results["checked"] += 1
+                lead_id_str = student.get("amo_lead_id")
+                
+                if not lead_id_str:
+                    continue
+                
+                # Преобразуем ID в int
+                try:
+                    lead_id = int(lead_id_str)
+                except (ValueError, TypeError):
+                    results["errors"].append({
+                        "id": str(student["_id"]),
+                        "fio": student.get("fio", ""),
+                        "error": f"Invalid lead_id: {lead_id_str}"
+                    })
+                    continue
+                
+                # Проверяем существование сделки в AMO
+                exists = await amo_service.check_lead_exists(lead_id)
+                
+                if not exists:
+                    # Сделка не найдена, обновляем статус
+                    results["not_found"].append({
+                        "id": str(student["_id"]),
+                        "fio": student.get("fio", ""),
+                        "amo_lead_id": lead_id_str
+                    })
+                    
+                    # Обновляем статус в БД
+                    await students_collection.update_one(
+                        {"_id": student["_id"]},
+                        {
+                            "$set": {
+                                "sent_to_amo": False
+                            }
+                        }
+                    )
+                    results["updated"] += 1
+                    
+            except Exception as e:
+                print(f"Error verifying student {student.get('_id')}: {e}")
+                results["errors"].append({
+                    "id": str(student.get("_id", "unknown")),
+                    "fio": student.get("fio", ""),
+                    "error": str(e)
+                })
+        
+        # Небольшая задержка между батчами
+        if i + BATCH_SIZE < len(students):
             await asyncio.sleep(0.5)
     
     return results
