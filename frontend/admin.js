@@ -440,15 +440,24 @@ async function verifyAmoStatus() {
             const checked = data.results?.checked || 0;
             const updated = data.results?.updated || 0;
             const notFound = data.results?.not_found?.length || 0;
+            const wrongPipeline = data.results?.wrong_pipeline?.length || 0;
+            const hidden = data.results?.hidden?.length || 0;
             
             if (updated > 0) {
+                // Формируем детальное сообщение
+                const issues = [];
+                if (notFound > 0) issues.push(`не найдено: ${notFound}`);
+                if (wrongPipeline > 0) issues.push(`неправильная воронка: ${wrongPipeline}`);
+                if (hidden > 0) issues.push(`скрытые: ${hidden}`);
+                
+                const issuesText = issues.length > 0 ? issues.join(', ') : 'проблемы обнаружены';
                 showToast(
-                    `Проверено ${checked} заявок. Не найдено в AMO: ${updated}. Статусы обновлены.`,
+                    `Проверено ${checked} заявок. ${issuesText}. Обновлено: ${updated}.`,
                     'warning'
                 );
             } else {
                 showToast(
-                    `Проверено ${checked} заявок. Все заявки найдены в AMO.`,
+                    `Проверено ${checked} заявок. Все заявки найдены в правильной воронке.`,
                     'success'
                 );
             }

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     integration_id: str = ""  # INTEGRATION_ID
     amo_long_token: str = ""  # AMO_LONG_TOKEN (access token)
     amo_short_key: str = ""  # AMO_SHORT_KEY (refresh token)
+    amo_correct_pipeline_id: int = 7797890  # Правильная воронка для сделок
     
     # Admin Panel
     admin_password: str = "admin"

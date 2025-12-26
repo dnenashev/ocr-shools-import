@@ -270,6 +270,101 @@ class AMOCRMService:
             except Exception as e:
                 print(f"Exception checking lead {lead_id}: {e}")
                 return False
+    
+    async def get_lead_info(self, lead_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Получение информации о сделке в AMO CRM по ID
+        Возвращает словарь с информацией о сделке или None при ошибке
+        
+        Возвращает:
+        {
+            "exists": True/False,
+            "pipeline_id": int или None,
+            "is_correct_pipeline": True/False,
+            "is_hidden": True/False (если сделка в скрытой воронке)
+        }
+        """
+        url = f"{self.base_url}/api/v4/leads/{lead_id}"
+        correct_pipeline_id = settings.amo_correct_pipeline_id
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(
+                    url,
+                    headers=self._get_headers()
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # AMO API v4 возвращает сделки в _embedded.leads
+                    if "_embedded" in data and "leads" in data["_embedded"]:
+                        leads = data["_embedded"]["leads"]
+                        if leads and len(leads) > 0:
+                            lead = leads[0]
+                            pipeline_id = lead.get("pipeline_id")
+                            
+                            # Проверяем, правильная ли воронка
+                            is_correct_pipeline = pipeline_id == correct_pipeline_id
+                            
+                            return {
+                                "exists": True,
+                                "pipeline_id": pipeline_id,
+                                "is_correct_pipeline": is_correct_pipeline,
+                                "is_hidden": False  # Если сделка найдена, она не скрыта
+                            }
+                    
+                    # Если структура ответа неожиданная, но статус 200
+                    return {
+                        "exists": True,
+                        "pipeline_id": None,
+                        "is_correct_pipeline": False,
+                        "is_hidden": False
+                    }
+                    
+                elif response.status_code == 404:
+                    return {
+                        "exists": False,
+                        "pipeline_id": None,
+                        "is_correct_pipeline": False,
+                        "is_hidden": False
+                    }
+                elif response.status_code == 403:
+                    # 403 может означать, что сделка в скрытой воронке
+                    return {
+                        "exists": True,  # Сделка существует, но недоступна
+                        "pipeline_id": None,
+                        "is_correct_pipeline": False,
+                        "is_hidden": True
+                    }
+                elif response.status_code == 401:
+                    # Попробуем обновить токен и повторить
+                    if await self.refresh_access_token():
+                        response = await client.get(
+                            url,
+                            headers=self._get_headers()
+                        )
+                        if response.status_code == 200:
+                            data = response.json()
+                            if "_embedded" in data and "leads" in data["_embedded"]:
+                                leads = data["_embedded"]["leads"]
+                                if leads and len(leads) > 0:
+                                    lead = leads[0]
+                                    pipeline_id = lead.get("pipeline_id")
+                                    is_correct_pipeline = pipeline_id == correct_pipeline_id
+                                    return {
+                                        "exists": True,
+                                        "pipeline_id": pipeline_id,
+                                        "is_correct_pipeline": is_correct_pipeline,
+                                        "is_hidden": False
+                                    }
+                    return None
+                else:
+                    print(f"Error getting lead info {lead_id}: {response.status_code} - {response.text}")
+                    return None
+            except Exception as e:
+                print(f"Exception getting lead info {lead_id}: {e}")
+                return None
 
 
 async def _send_single_student_to_amo(
@@ -429,10 +524,15 @@ async def send_students_to_amo(student_ids: List[str] = None) -> Dict[str, Any]:
 async def verify_sent_to_amo() -> Dict[str, Any]:
     """
     Проверка всех заявок, помеченных как отправленные в AMO CRM.
-    Если сделка не найдена в AMO, обновляет статус на неотправленную.
+    Проверяет:
+    1. Существует ли сделка в AMO
+    2. Находится ли сделка в правильной воронке (pipeline_id = 7797890)
+    3. Не находится ли сделка в скрытой воронке
+    
+    Если сделка не найдена, в неправильной воронке или скрыта - обновляет статус на неотправленную.
     
     Returns:
-        Словарь с результатами: проверено, не найдено, обновлено
+        Словарь с результатами: проверено, не найдено, неправильная воронка, скрыта, обновлено
     """
     amo_service = AMOCRMService()
     students_collection = await get_students_collection()
@@ -444,6 +544,8 @@ async def verify_sent_to_amo() -> Dict[str, Any]:
     results = {
         "checked": 0,
         "not_found": [],
+        "wrong_pipeline": [],
+        "hidden": [],
         "updated": 0,
         "errors": []
     }
@@ -477,17 +579,54 @@ async def verify_sent_to_amo() -> Dict[str, Any]:
                     })
                     continue
                 
-                # Проверяем существование сделки в AMO
-                exists = await amo_service.check_lead_exists(lead_id)
+                # Получаем информацию о сделке (включая воронку)
+                lead_info = await amo_service.get_lead_info(lead_id)
                 
-                if not exists:
-                    # Сделка не найдена, обновляем статус
+                if lead_info is None:
+                    # Ошибка при получении информации
+                    results["errors"].append({
+                        "id": str(student["_id"]),
+                        "fio": student.get("fio", ""),
+                        "error": "Failed to get lead info"
+                    })
+                    continue
+                
+                # Проверяем различные случаи
+                should_update = False
+                reason = ""
+                
+                if not lead_info.get("exists", False):
+                    # Сделка не найдена
                     results["not_found"].append({
                         "id": str(student["_id"]),
                         "fio": student.get("fio", ""),
                         "amo_lead_id": lead_id_str
                     })
-                    
+                    should_update = True
+                    reason = "not_found"
+                elif lead_info.get("is_hidden", False):
+                    # Сделка в скрытой воронке
+                    results["hidden"].append({
+                        "id": str(student["_id"]),
+                        "fio": student.get("fio", ""),
+                        "amo_lead_id": lead_id_str,
+                        "pipeline_id": lead_info.get("pipeline_id")
+                    })
+                    should_update = True
+                    reason = "hidden"
+                elif not lead_info.get("is_correct_pipeline", False):
+                    # Сделка в неправильной воронке
+                    results["wrong_pipeline"].append({
+                        "id": str(student["_id"]),
+                        "fio": student.get("fio", ""),
+                        "amo_lead_id": lead_id_str,
+                        "current_pipeline_id": lead_info.get("pipeline_id"),
+                        "correct_pipeline_id": settings.amo_correct_pipeline_id
+                    })
+                    should_update = True
+                    reason = "wrong_pipeline"
+                
+                if should_update:
                     # Обновляем статус в БД
                     await students_collection.update_one(
                         {"_id": student["_id"]},

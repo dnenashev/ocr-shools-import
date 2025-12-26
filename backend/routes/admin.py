@@ -263,14 +263,30 @@ async def get_stats(_: bool = Depends(get_current_admin)):
 async def verify_amo_status(_: bool = Depends(get_current_admin)):
     """
     Проверка всех заявок, помеченных как отправленные в AMO CRM.
-    Если сделка не найдена в AMO, обновляет статус на неотправленную.
+    Проверяет существование сделок, правильность воронки и доступность.
+    Если сделка не найдена, в неправильной воронке или скрыта - обновляет статус.
     """
     try:
         results = await verify_sent_to_amo()
         
+        # Формируем детальное сообщение
+        messages = []
+        messages.append(f"Проверено: {results['checked']}")
+        
+        if results['not_found']:
+            messages.append(f"Не найдено: {len(results['not_found'])}")
+        if results['wrong_pipeline']:
+            messages.append(f"Неправильная воронка: {len(results['wrong_pipeline'])}")
+        if results['hidden']:
+            messages.append(f"Скрытые: {len(results['hidden'])}")
+        
+        messages.append(f"Обновлено: {results['updated']}")
+        
+        message = ". ".join(messages)
+        
         return {
             "success": True,
-            "message": f"Проверено {results['checked']} заявок. Не найдено в AMO: {results['updated']}",
+            "message": message,
             "results": results
         }
     except Exception as e:
