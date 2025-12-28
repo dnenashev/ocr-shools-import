@@ -135,10 +135,33 @@ async function loadStats() {
             document.getElementById('totalCount').textContent = data.total;
             document.getElementById('sentCount').textContent = data.sent_to_amo;
             document.getElementById('pendingCount').textContent = data.not_sent;
+            
+            // Детализация по контактам
+            updateStatsDetail(data.sent_to_amo, data.sent_with_student_contact, data.sent_with_parent_contact);
         }
     } catch (error) {
         console.error('Error loading stats:', error);
     }
+}
+
+function updateStatsDetail(sentCount, studentContactCount, parentContactCount) {
+    const sentDetail = document.getElementById('sentDetail');
+    if (sentCount > 0) {
+        const studentCount = studentContactCount || 0;
+        const parentCount = parentContactCount || 0;
+        sentDetail.textContent = `С контактом ребенка: ${studentCount}, с контактом родителя: ${parentCount}`;
+    } else {
+        sentDetail.textContent = '';
+    }
+}
+
+function updateStatsWithContactData(studentContactCount, parentContactCount) {
+    // Обновляем только детализацию контактов, общие данные загружаем отдельно
+    const sentCount = parseInt(document.getElementById('sentCount').textContent) || 0;
+    updateStatsDetail(sentCount, studentContactCount, parentContactCount);
+    
+    // Также обновляем общую статистику
+    loadStats();
 }
 
 async function loadStudents() {
@@ -250,6 +273,12 @@ function renderStudents(students) {
                             </svg>
                         </button>
                     ` : ''}
+                    <button class="btn btn-info btn-small" onclick="sendToAmo('${student._id}')" title="Отправить еще раз в AMO">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        <span>Еще раз</span>
+                    </button>
                     <button class="btn btn-outline btn-small" onclick="confirmDelete('${student._id}')" title="Удалить">
                         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -294,6 +323,7 @@ function handleFilter() {
 // AMO CRM functions
 async function sendToAmo(studentId) {
     try {
+        showToast('Отправка заявки в AMO...', 'info');
         const response = await fetch('/api/admin/send-to-amo', {
             method: 'POST',
             headers: {
@@ -306,7 +336,16 @@ async function sendToAmo(studentId) {
         const data = await response.json();
         
         if (response.ok) {
-            showToast('Заявка отправлена в AMO', 'success');
+            const successCount = data.results?.success?.length || 0;
+            const failedCount = data.results?.failed?.length || 0;
+            
+            if (successCount > 0) {
+                showToast('Заявка отправлена в AMO', 'success');
+            } else if (failedCount > 0) {
+                showToast('Не удалось отправить заявку', 'error');
+            } else {
+                showToast('Заявка отправлена в AMO', 'success');
+            }
             loadStats();
             loadStudents();
         } else {
@@ -426,7 +465,9 @@ async function verifyAmoStatus() {
     try {
         showToast('Проверка заявок в AMO...', 'info');
         
-        const response = await fetch('/api/admin/verify-amo', {
+        // Проверяем все заявки с amo_lead_id (включая помеченные как неотправленные)
+        // чтобы восстановить статусы тех, что были неправильно помечены
+        const response = await fetch('/api/admin/verify-amo?check_all=true', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,

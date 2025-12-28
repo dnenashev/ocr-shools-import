@@ -60,6 +60,7 @@
             <div class="stat-card success">
                 <h3>Отправлено в AMO</h3>
                 <div class="value" id="sentCount">0</div>
+                <div class="stat-detail" id="sentDetail" style="font-size: 0.85em; margin-top: 8px; color: rgba(255, 255, 255, 0.8);"></div>
             </div>
             <div class="stat-card warning">
                 <h3>Ожидают отправки</h3>
@@ -83,12 +84,6 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
                         </svg>
                         Отправить в АМО
-                    </button>
-                    <button class="btn btn-warning btn-small" onclick="verifyAmoStatus()">
-                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        Проверить AMO
                     </button>
                     <button class="btn btn-primary btn-small" onclick="exportToCSV()">
                         <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">

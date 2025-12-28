@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Response, Request
+from fastapi import APIRouter, HTTPException, status, Depends, Response, Request, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Optional, List
 from datetime import timedelta
@@ -252,22 +252,42 @@ async def get_stats(_: bool = Depends(get_current_admin)):
     sent = await students_collection.count_documents({"sent_to_amo": True})
     not_sent = await students_collection.count_documents({"sent_to_amo": False})
     
+    # Детализация по контактам для отправленных сделок
+    sent_with_student_contact = await students_collection.count_documents({
+        "sent_to_amo": True,
+        "amo_contact_id": {"$exists": True, "$ne": None}
+    })
+    sent_with_parent_contact = await students_collection.count_documents({
+        "sent_to_amo": True,
+        "amo_parent_contact_id": {"$exists": True, "$ne": None}
+    })
+    
     return {
         "total": total,
         "sent_to_amo": sent,
-        "not_sent": not_sent
+        "not_sent": not_sent,
+        "sent_with_student_contact": sent_with_student_contact,
+        "sent_with_parent_contact": sent_with_parent_contact
     }
 
 
 @router.post("/verify-amo")
-async def verify_amo_status(_: bool = Depends(get_current_admin)):
+async def verify_amo_status(
+    check_all: bool = Query(False, description="Если True, проверяет все заявки с amo_lead_id (включая помеченные как неотправленные)"),
+    _: bool = Depends(get_current_admin)
+):
     """
     Проверка всех заявок, помеченных как отправленные в AMO CRM.
     Проверяет существование сделок, правильность воронки и доступность.
     Если сделка не найдена, в неправильной воронке или скрыта - обновляет статус.
+    
+    Query params:
+    - check_all: Если True, проверяет все заявки с amo_lead_id (включая помеченные как неотправленные)
     """
+    import json
     try:
-        results = await verify_sent_to_amo()
+        
+        results = await verify_sent_to_amo(check_all=check_all)
         
         # Формируем детальное сообщение
         messages = []
@@ -284,11 +304,13 @@ async def verify_amo_status(_: bool = Depends(get_current_admin)):
         
         message = ". ".join(messages)
         
-        return {
+        response_data = {
             "success": True,
             "message": message,
             "results": results
         }
+        
+        return response_data
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
