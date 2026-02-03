@@ -7,6 +7,8 @@ let currentFilter = '';
 let searchQuery = '';
 let deleteStudentId = null;
 let editStudentId = null;
+/** Выбранные заявки для массовой отправки в AMO (id → true) */
+let selectedStudentIds = new Set();
 
 // DOM Elements
 const loginPage = document.getElementById('loginPage');
@@ -16,6 +18,22 @@ const studentsTable = document.getElementById('studentsTable');
 const searchInput = document.getElementById('searchInput');
 const filterSelect = document.getElementById('filterSelect');
 const toastContainer = document.getElementById('toastContainer');
+
+// Page from URL (#page/1, #page/16 ...)
+function getPageFromUrl() {
+    const m = (window.location.hash || '').match(/^#?page\/(\d+)$/i);
+    if (!m) return 0;
+    const num = parseInt(m[1], 10);
+    return num > 0 ? num - 1 : 0; // 1-based in URL -> 0-based
+}
+
+function setPageInUrl(pageIndex) {
+    const page = Math.max(0, pageIndex);
+    const newHash = '#page/' + (page + 1);
+    if (window.location.hash !== newHash) {
+        window.location.hash = newHash;
+    }
+}
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -29,6 +47,16 @@ document.addEventListener('DOMContentLoaded', () => {
     loginForm.addEventListener('submit', handleLogin);
     searchInput.addEventListener('input', debounce(handleSearch, 300));
     filterSelect.addEventListener('change', handleFilter);
+
+    // При смене hash вручную — перейти на указанную страницу
+    window.addEventListener('hashchange', () => {
+        if (!adminPanel.classList.contains('active')) return;
+        const pageFromUrl = getPageFromUrl();
+        if (pageFromUrl !== currentPage) {
+            currentPage = pageFromUrl;
+            loadStudents();
+        }
+    });
 });
 
 // Toast notifications
@@ -54,6 +82,7 @@ async function checkAuth() {
         
         if (response.ok) {
             showAdmin();
+            currentPage = getPageFromUrl();
             loadStats();
             loadStudents();
         } else {
@@ -168,7 +197,7 @@ function updateStatsWithContactData(studentContactCount, parentContactCount) {
 async function loadStudents() {
     studentsTable.innerHTML = `
         <tr>
-            <td colspan="7">
+            <td colspan="9">
                 <div class="loading">
                     <div class="spinner"></div>
                 </div>
@@ -196,6 +225,11 @@ async function loadStudents() {
         if (response.ok) {
             const data = await response.json();
             totalStudents = data.total;
+            const totalPages = Math.ceil(totalStudents / pageSize);
+            if (totalPages > 0 && currentPage >= totalPages) {
+                currentPage = totalPages - 1;
+                setPageInUrl(currentPage);
+            }
             renderStudents(data.students);
             updatePagination();
         } else if (response.status === 401) {
@@ -205,7 +239,7 @@ async function loadStudents() {
         console.error('Error loading students:', error);
         studentsTable.innerHTML = `
             <tr>
-                <td colspan="8">
+                <td colspan="9">
                     <div class="empty-state">
                         <p>Ошибка загрузки данных</p>
                     </div>
@@ -219,7 +253,7 @@ function renderStudents(students) {
     if (students.length === 0) {
         studentsTable.innerHTML = `
             <tr>
-                <td colspan="8">
+                <td colspan="9">
                     <div class="empty-state">
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -252,8 +286,12 @@ function renderStudents(students) {
             feedbackInfo += '</div>';
         }
         
+        const isChecked = selectedStudentIds.has(student._id);
         return `
         <tr class="student-row" data-student-id="${escapeHtml(student._id)}" onclick="openEditModal(event)">
+            <td class="td-checkbox" onclick="event.stopPropagation()">
+                <input type="checkbox" class="row-checkbox" data-student-id="${escapeHtml(student._id)}" ${isChecked ? 'checked' : ''} onchange="toggleSelectStudent(this)">
+            </td>
             <td><span style="font-size: 12px; color: var(--accent-primary);">${escapeHtml(student.application_type || '-')}</span></td>
             <td><strong>${escapeHtml(student.fio || '-')}</strong>${feedbackInfo}</td>
             <td>${escapeHtml(student.school || '-')}</td>
@@ -298,6 +336,86 @@ function renderStudents(students) {
         </tr>
     `;
     }).join('');
+
+    const selectAllEl = document.getElementById('selectAllCheckbox');
+    if (selectAllEl) {
+        selectAllEl.onchange = handleSelectAll;
+        updateSelectAllState();
+    }
+}
+
+function toggleSelectStudent(checkboxEl) {
+    const id = checkboxEl.getAttribute('data-student-id');
+    if (!id) return;
+    if (checkboxEl.checked) {
+        selectedStudentIds.add(id);
+    } else {
+        selectedStudentIds.delete(id);
+    }
+    updateSelectAllState();
+}
+
+function handleSelectAll() {
+    const selectAll = document.getElementById('selectAllCheckbox');
+    if (!selectAll) return;
+    const checkboxes = document.querySelectorAll('.row-checkbox');
+    const checked = selectAll.checked;
+    checkboxes.forEach(cb => {
+        cb.checked = checked;
+        const id = cb.getAttribute('data-student-id');
+        if (id) {
+            if (checked) selectedStudentIds.add(id);
+            else selectedStudentIds.delete(id);
+        }
+    });
+    updateSelectAllState();
+}
+
+function updateSelectAllState() {
+    const selectAll = document.getElementById('selectAllCheckbox');
+    if (!selectAll) return;
+    const checkboxes = document.querySelectorAll('.row-checkbox');
+    const n = checkboxes.length;
+    const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    selectAll.checked = n > 0 && checkedCount === n;
+    selectAll.indeterminate = checkedCount > 0 && checkedCount < n;
+}
+
+async function sendSelectedToAmo() {
+    const ids = Array.from(selectedStudentIds);
+    if (ids.length === 0) {
+        showToast('Выберите заявки галочками', 'error');
+        return;
+    }
+    try {
+        showToast(`Отправка ${ids.length} заявок в AMO...`, 'info');
+        const response = await fetch('/api/admin/send-to-amo', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ student_ids: ids })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            const successCount = data.results?.success?.length || 0;
+            const failedCount = data.results?.failed?.length || 0;
+            selectedStudentIds.clear();
+            updateSelectAllState();
+            loadStats();
+            loadStudents();
+            if (failedCount > 0) {
+                showToast(`Отправлено ${successCount}, ошибок: ${failedCount}`, failedCount === ids.length ? 'error' : 'info');
+            } else {
+                showToast(`Отправлено заявок: ${successCount}`, 'success');
+            }
+        } else {
+            showToast(data.detail || 'Ошибка отправки', 'error');
+        }
+    } catch (err) {
+        showToast('Ошибка подключения', 'error');
+    }
 }
 
 function updatePagination() {
@@ -313,6 +431,7 @@ function updatePagination() {
 
 function changePage(delta) {
     currentPage += delta;
+    setPageInUrl(currentPage);
     loadStudents();
 }
 
@@ -320,12 +439,14 @@ function changePage(delta) {
 function handleSearch() {
     searchQuery = searchInput.value.trim();
     currentPage = 0;
+    setPageInUrl(0);
     loadStudents();
 }
 
 function handleFilter() {
     currentFilter = filterSelect.value;
     currentPage = 0;
+    setPageInUrl(0);
     loadStudents();
 }
 

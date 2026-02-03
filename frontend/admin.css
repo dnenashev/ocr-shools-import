@@ -310,6 +310,20 @@ body {
     overflow-x: auto;
 }
 
+.th-checkbox,
+.td-checkbox {
+    width: 40px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.th-checkbox input,
+.td-checkbox input {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;

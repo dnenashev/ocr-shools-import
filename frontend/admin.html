@@ -79,11 +79,14 @@
                         <option value="false">Не отправлены</option>
                         <option value="true">Отправлены</option>
                     </select>
-                    <button class="btn btn-success btn-small" onclick="sendAllToAmo()">
+                    <button class="btn btn-success btn-small" id="sendSelectedBtn" onclick="sendSelectedToAmo()" title="Сначала отметьте заявки галочками">
                         <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
                         </svg>
-                        Отправить в АМО
+                        Отправить выбранные
+                    </button>
+                    <button class="btn btn-outline btn-small" onclick="sendAllToAmo()" title="Отправить все неотправленные">
+                        Отправить все в АМО
                     </button>
                     <button class="btn btn-primary btn-small" onclick="exportToCSV()">
                         <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -104,6 +107,9 @@
                 <table>
                     <thead>
                         <tr>
+                            <th class="th-checkbox">
+                                <input type="checkbox" id="selectAllCheckbox" title="Выбрать все на странице">
+                            </th>
                             <th>Тип заявки</th>
                             <th>ФИО</th>
                             <th>Школа</th>
