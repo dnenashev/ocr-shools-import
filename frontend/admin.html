@@ -141,6 +141,44 @@
         </div>
     </div>
 
+    <!-- Edit Lead Modal -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal modal-edit">
+            <h2>Редактировать заявку</h2>
+            <p class="modal-hint">Измените данные и нажмите «Сохранить»</p>
+            <form id="editLeadForm" onsubmit="saveEdit(event)">
+                <div class="form-group">
+                    <label for="editLeadFio">ФИО *</label>
+                    <input type="text" id="editLeadFio" required>
+                </div>
+                <div class="form-group">
+                    <label for="editLeadSchool">Школа *</label>
+                    <input type="text" id="editLeadSchool" required>
+                </div>
+                <div class="form-group">
+                    <label for="editLeadClass">Класс *</label>
+                    <input type="text" id="editLeadClass" required>
+                </div>
+                <div class="form-group">
+                    <label for="editLeadPhone">Телефон *</label>
+                    <input type="tel" id="editLeadPhone" required>
+                </div>
+                <div class="form-group">
+                    <label for="editLeadParentName">Имя родителя</label>
+                    <input type="text" id="editLeadParentName" placeholder="Не обязательно">
+                </div>
+                <div class="form-group">
+                    <label for="editLeadParentPhone">Телефон родителя</label>
+                    <input type="tel" id="editLeadParentPhone" placeholder="Не обязательно">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeEditModal()">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="/static/admin.js"></script>
 </body>
 </html>

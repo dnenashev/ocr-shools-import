@@ -6,6 +6,7 @@ let totalStudents = 0;
 let currentFilter = '';
 let searchQuery = '';
 let deleteStudentId = null;
+let editStudentId = null;
 
 // DOM Elements
 const loginPage = document.getElementById('loginPage');
@@ -252,7 +253,7 @@ function renderStudents(students) {
         }
         
         return `
-        <tr>
+        <tr class="student-row" data-student-id="${escapeHtml(student._id)}" onclick="openEditModal(event)">
             <td><span style="font-size: 12px; color: var(--accent-primary);">${escapeHtml(student.application_type || '-')}</span></td>
             <td><strong>${escapeHtml(student.fio || '-')}</strong>${feedbackInfo}</td>
             <td>${escapeHtml(student.school || '-')}</td>
@@ -264,7 +265,7 @@ function renderStudents(students) {
                     ${student.sent_to_amo ? 'Отправлено' : 'Ожидает'}
                 </span>
             </td>
-            <td>
+            <td onclick="event.stopPropagation()">
                 <div class="action-buttons">
                     ${!student.sent_to_amo ? `
                         <button class="btn btn-success btn-small" onclick="sendToAmo('${student._id}')" title="Отправить в AMO">
@@ -535,6 +536,78 @@ function closeModal() {
     deleteStudentId = null;
 }
 
+// Edit lead modal
+function openEditModal(event) {
+    if (event.target.closest('.action-buttons')) return;
+    const row = event.currentTarget;
+    const studentId = row && row.dataset && row.dataset.studentId;
+    if (!studentId) return;
+    editStudentId = studentId;
+    document.getElementById('editModal').classList.add('active');
+    loadStudentForEdit(studentId);
+}
+
+function closeEditModal() {
+    document.getElementById('editModal').classList.remove('active');
+    editStudentId = null;
+}
+
+async function loadStudentForEdit(studentId) {
+    try {
+        const response = await fetch(`/api/admin/students/${studentId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Не удалось загрузить данные');
+        const student = await response.json();
+        document.getElementById('editLeadFio').value = student.fio || '';
+        document.getElementById('editLeadSchool').value = student.school || '';
+        document.getElementById('editLeadClass').value = student.class || '';
+        document.getElementById('editLeadPhone').value = student.phone || '';
+        document.getElementById('editLeadParentName').value = student.parent_name || '';
+        document.getElementById('editLeadParentPhone').value = student.parent_phone || '';
+    } catch (err) {
+        showToast(err.message || 'Ошибка загрузки заявки', 'error');
+        closeEditModal();
+    }
+}
+
+async function saveEdit(event) {
+    event.preventDefault();
+    if (!editStudentId) return;
+    const fio = document.getElementById('editLeadFio').value.trim();
+    const school = document.getElementById('editLeadSchool').value.trim();
+    const studentClass = document.getElementById('editLeadClass').value.trim();
+    const phone = document.getElementById('editLeadPhone').value.trim();
+    const parentName = document.getElementById('editLeadParentName').value.trim();
+    const parentPhone = document.getElementById('editLeadParentPhone').value.trim();
+    if (!fio || !school || !studentClass || !phone) {
+        showToast('Заполните ФИО, школу, класс и телефон', 'error');
+        return;
+    }
+    try {
+        const params = new URLSearchParams({
+            fio, school, student_class: studentClass, phone,
+            parent_name: parentName || '',
+            parent_phone: parentPhone || ''
+        });
+        const response = await fetch(`/api/admin/students/${editStudentId}?${params}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+            showToast('Заявка сохранена', 'success');
+            closeEditModal();
+            loadStats();
+            loadStudents();
+        } else {
+            const data = await response.json();
+            showToast(data.detail || 'Ошибка сохранения', 'error');
+        }
+    } catch (err) {
+        showToast('Ошибка подключения', 'error');
+    }
+}
+
 async function deleteStudent() {
     if (!deleteStudentId) return;
     
@@ -596,6 +669,7 @@ function debounce(func, wait) {
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeModal();
+        closeEditModal();
     }
 });
 
@@ -603,6 +677,11 @@ document.addEventListener('keydown', (e) => {
 document.getElementById('deleteModal').addEventListener('click', (e) => {
     if (e.target.classList.contains('modal-overlay')) {
         closeModal();
+    }
+});
+document.getElementById('editModal').addEventListener('click', (e) => {
+    if (e.target.classList.contains('modal-overlay')) {
+        closeEditModal();
     }
 });
 

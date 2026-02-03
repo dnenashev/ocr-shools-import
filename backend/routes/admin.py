@@ -197,6 +197,8 @@ async def update_student(
     school: Optional[str] = None,
     student_class: Optional[str] = None,
     phone: Optional[str] = None,
+    parent_name: Optional[str] = None,
+    parent_phone: Optional[str] = None,
     _: bool = Depends(get_current_admin)
 ):
     """Обновление данных ученика"""
@@ -211,6 +213,10 @@ async def update_student(
         update_data["class"] = student_class
     if phone is not None:
         update_data["phone"] = phone
+    if parent_name is not None:
+        update_data["parent_name"] = parent_name.strip() or None
+    if parent_phone is not None:
+        update_data["parent_phone"] = parent_phone.strip() or None
     
     if not update_data:
         raise HTTPException(
