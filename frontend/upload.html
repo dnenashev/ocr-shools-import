@@ -526,6 +526,12 @@
                 
                 <div class="selected-type" id="selectedType"></div>
                 
+                <!-- Школа для всей загрузки (применяется ко всем заявкам в этой загрузке) -->
+                <div class="form-group batch-school-block" style="margin-bottom: 16px;">
+                    <label for="batchSchool">Школа для загрузки (для всех заявок)</label>
+                    <input type="text" id="batchSchool" placeholder="Укажите школу — она будет подставлена всем заявкам" class="batch-school-input">
+                </div>
+                
                 <!-- Step Indicator -->
                 <div class="step-indicator">
                     <div class="step active" id="step1">1</div>
@@ -767,6 +773,7 @@
             feedbackFiles = [];
             fileInput.value = '';
             feedbackFileInput.value = '';
+            document.getElementById('batchSchool').value = '';
             previewContainer.classList.remove('active');
             resultContainer.classList.remove('active');
             editForm.classList.remove('active');
@@ -1033,9 +1040,10 @@
         }
         
         function showEditForm(data) {
-            // Заполняем форму распознанными данными
+            // Школа для загрузки: если задана — подставляем всем заявкам, иначе берём из OCR
+            const batchSchool = document.getElementById('batchSchool').value.trim();
             document.getElementById('editFio').value = data.fio || '';
-            document.getElementById('editSchool').value = data.school || '';
+            document.getElementById('editSchool').value = batchSchool || data.school || '';
             document.getElementById('editClass').value = data.class || '';
             document.getElementById('editPhone').value = data.phone || '';
             document.getElementById('editParentName').value = data.parent_name || '';
@@ -1129,15 +1137,17 @@
         }
         
         async function saveEditedData() {
-            // Получаем данные из формы
+            // Получаем данные из формы; школа — из поля «для загрузки» или из формы
             const fio = document.getElementById('editFio').value.trim();
-            const school = document.getElementById('editSchool').value.trim();
+            const batchSchool = document.getElementById('batchSchool').value.trim();
+            const formSchool = document.getElementById('editSchool').value.trim();
+            const school = batchSchool || formSchool;
             const studentClass = document.getElementById('editClass').value.trim();
             const phone = document.getElementById('editPhone').value.trim();
             
             // Валидация
             if (!fio || !school || !studentClass || !phone) {
-                showToast('Заполните все обязательные поля', 'error');
+                showToast('Заполните все обязательные поля (в т.ч. школу для загрузки или в форме)', 'error');
                 return;
             }
             
@@ -1283,7 +1293,8 @@
             photoList.innerHTML = '';
             feedbackPhotoList.innerHTML = '';
             
-            // Очищаем форму
+            // Очищаем форму и поле школы для загрузки
+            document.getElementById('batchSchool').value = '';
             document.getElementById('editFio').value = '';
             document.getElementById('editSchool').value = '';
             document.getElementById('editClass').value = '';

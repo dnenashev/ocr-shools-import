@@ -6,9 +6,24 @@ from bson import ObjectId
 import csv
 import io
 from backend.database.mongodb import get_students_collection
+from backend.config import get_settings
 from backend.services.amo import send_students_to_amo, verify_sent_to_amo
 from backend.utils.auth import authenticate_admin, get_current_admin, ACCESS_TOKEN_EXPIRE_MINUTES
 from pydantic import BaseModel
+
+
+def _amo_lead_url(amo_lead_id) -> Optional[str]:
+    """Формирует ссылку на сделку в AMO CRM."""
+    if not amo_lead_id:
+        return None
+    settings = get_settings()
+    base = (settings.amo_redirect_uri or "").strip()
+    if not base:
+        return None
+    if not base.startswith("http"):
+        base = f"https://{base}" if not base.startswith("//") else f"https:{base}"
+    base = base.rstrip("/")
+    return f"{base}/leads/detail/{amo_lead_id}"
 
 router = APIRouter()
 
@@ -95,11 +110,16 @@ async def get_students(
     cursor = students_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
     students = await cursor.to_list(length=limit)
     
-    # Преобразуем ObjectId в строки
+    # Преобразуем ObjectId в строки и добавляем ссылку на сделку в AMO
     result = []
     for student in students:
         student["id"] = str(student["_id"])
         student["_id"] = str(student["_id"])
+        lead_id = student.get("amo_lead_id")
+        if lead_id:
+            student["amo_lead_url"] = _amo_lead_url(str(lead_id))
+        else:
+            student["amo_lead_url"] = None
         
         # Обратная совместимость: если есть image_path, но нет image_paths, создаём массив
         if "image_path" in student and "image_paths" not in student:
@@ -140,6 +160,8 @@ async def get_student(
         )
     
     student["_id"] = str(student["_id"])
+    lead_id = student.get("amo_lead_id")
+    student["amo_lead_url"] = _amo_lead_url(str(lead_id)) if lead_id else None
     return student
 
 
