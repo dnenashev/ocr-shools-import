@@ -149,6 +149,12 @@ class AMOCRMService:
             "custom_fields_values": []
         }
         
+        # INTENT (поле 1622865) — moscow_schools для заявок из OCR-crm
+        lead_data["custom_fields_values"].append({
+            "field_id": 1622865,
+            "values": [{"value": "moscow_schools"}]
+        })
+        
         # Добавляем тег типа заявки
         if application_type:
             # В AMO API v4 можно добавлять теги по имени или по ID
